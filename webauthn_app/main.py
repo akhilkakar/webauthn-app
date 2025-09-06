@@ -225,7 +225,7 @@ async def register_complete(request: RegisterCompleteRequest):
         print("Parsed registration credential")
         
         # Verify the registration response
-        verification = verify_registration_response(
+        '''verification = verify_registration_response(
             credential=registration_credential,
             expected_challenge=stored_challenge,
             expected_origin=RP_ORIGIN,
@@ -235,7 +235,23 @@ async def register_complete(request: RegisterCompleteRequest):
         print(f"Verification result: {verification.verified}")
         
         if not verification.verified:
+            raise HTTPException(status_code=400, detail="Registration verification failed") '''
+
+        # Verify the registration response
+        try:
+            verification = verify_registration_response(
+                credential=registration_credential,
+                expected_challenge=stored_challenge,
+                expected_origin=RP_ORIGIN,
+                expected_rp_id=RP_ID,
+                # require_user_verification=False,  # optional, set if you don't need UV
+            )
+            print("Verification result: True")
+        except Exception as e:
+            # Optional: log e for diagnostics
+            print(f"Verification result: False ({e})")
             raise HTTPException(status_code=400, detail="Registration verification failed")
+
         
         # Store the credential
         credential_record = {
