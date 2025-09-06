@@ -69,6 +69,18 @@ class AuthenticateCompleteRequest(BaseModel):
 async def root():
     return {"message": "WebAuthn Backend Server"}
 
+
+'''
+This endpoint starts the WebAuthn registration process.
+It:
+1. Validates the username.
+2. Creates a unique WebAuthn user identity.
+3. Builds registration options for the frontend to pass to navigator.credentials.create().
+4. Stores the challenge for later verification.
+5. Returns the options to the frontend.
+
+This corresponds to Step 1 (Registration Begin) in the WebAuthn flow.
+'''
 @app.post("/register/begin")
 async def register_begin(request: RegisterBeginRequest):
     username = request.username.strip()
@@ -208,7 +220,7 @@ async def register_complete(request: RegisterCompleteRequest):
             if key.startswith(f"reg_{username}_"):
                 challenge_b64 = bytes_to_base64url(challenge_bytes)
                 # Check if this challenge appears in the clientDataJSON
-                if response_challenge and challenge_b64 in base64.b64decode(response_challenge).decode('utf-8'):
+                if response_challenge and challenge_b64 in base64url_to_bytes(response_challenge).decode('utf-8', errors='ignore'):
                     challenge_key = key
                     stored_challenge = challenge_bytes
                     break
@@ -223,19 +235,6 @@ async def register_complete(request: RegisterCompleteRequest):
         registration_credential = RegistrationCredential.parse_raw(json.dumps(credential_data))
         
         print("Parsed registration credential")
-        
-        # Verify the registration response
-        '''verification = verify_registration_response(
-            credential=registration_credential,
-            expected_challenge=stored_challenge,
-            expected_origin=RP_ORIGIN,
-            expected_rp_id=RP_ID,
-        )
-        
-        print(f"Verification result: {verification.verified}")
-        
-        if not verification.verified:
-            raise HTTPException(status_code=400, detail="Registration verification failed") '''
 
         # Verify the registration response
         try:
@@ -381,7 +380,7 @@ async def authenticate_complete(request: AuthenticateCompleteRequest):
             if key.startswith(f"auth_{username}_"):
                 challenge_b64 = bytes_to_base64url(challenge_bytes)
                 # Check if this challenge appears in the clientDataJSON
-                if response_challenge and challenge_b64 in base64.b64decode(response_challenge).decode('utf-8'):
+                if response_challenge and challenge_b64 in base64url_to_bytes(response_challenge).decode('utf-8', errors='ignore'):
                     challenge_key = key
                     stored_challenge = challenge_bytes
                     break
@@ -410,20 +409,21 @@ async def authenticate_complete(request: AuthenticateCompleteRequest):
         
         # Convert the credential data for verification
         authentication_credential = AuthenticationCredential.parse_raw(json.dumps(credential_data))
-        
+
         # Verify the authentication response
-        verification = verify_authentication_response(
-            credential=authentication_credential,
-            expected_challenge=stored_challenge,
-            expected_origin=RP_ORIGIN,
-            expected_rp_id=RP_ID,
-            credential_public_key=base64url_to_bytes(stored_credential["public_key"]),
-            credential_current_sign_count=stored_credential["sign_count"],
-        )
-        
-        print(f"Authentication verification result: {verification.verified}")
-        
-        if not verification.verified:
+        try:
+            verification = verify_authentication_response(
+                credential=authentication_credential,
+                expected_challenge=stored_challenge,
+                expected_origin=RP_ORIGIN,
+                expected_rp_id=RP_ID,
+                credential_public_key=base64url_to_bytes(stored_credential["public_key"]),
+                credential_current_sign_count=stored_credential["sign_count"],
+            )
+            print("Verification result: True")
+        except Exception as e:
+            # Optional: log e for diagnostics
+            print(f"Verification result: False ({e})")
             raise HTTPException(status_code=400, detail="Authentication verification failed")
         
         # Update sign count
