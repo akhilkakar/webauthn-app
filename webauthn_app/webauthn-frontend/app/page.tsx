@@ -59,19 +59,36 @@ export default function WebAuthnApp() {
       });
 
       if (!optionsResponse.ok) {
-        throw new Error('Failed to get registration options');
+        const errorText = await optionsResponse.text();
+        throw new Error(`Failed to get registration options: ${errorText}`);
       }
 
       const options = await optionsResponse.json();
       
-      // Step 2: Convert challenge and user ID from base64url
+      // Debug logging
+      console.log('Received options:', options);
+      
+      if (!options.challenge) {
+        throw new Error('No challenge received from server');
+      }
+
+      // Step 2: Convert options to the format expected by WebAuthn API
       const publicKeyCredentialCreationOptions = {
-        ...options.publicKey,
-        challenge: base64URLStringToBuffer(options.publicKey.challenge),
+        challenge: base64URLStringToBuffer(options.challenge),
+        rp: options.rp,
         user: {
-          ...options.publicKey.user,
-          id: base64URLStringToBuffer(options.publicKey.user.id)
-        }
+          id: base64URLStringToBuffer(options.user.id),
+          name: options.user.name,
+          displayName: options.user.displayName
+        },
+        pubKeyCredParams: options.pubKeyCredParams,
+        timeout: options.timeout,
+        excludeCredentials: options.excludeCredentials?.map(cred => ({
+          id: base64URLStringToBuffer(cred.id),
+          type: cred.type,
+          transports: cred.transports
+        })) || [],
+        authenticatorSelection: options.authenticatorSelection
       };
 
       setStatus('Please use your authenticator...');
@@ -80,6 +97,10 @@ export default function WebAuthnApp() {
       const credential = await navigator.credentials.create({
         publicKey: publicKeyCredentialCreationOptions
       });
+
+      if (!credential) {
+        throw new Error('No credential returned from authenticator');
+      }
 
       setStatus('Completing registration...');
 
@@ -99,13 +120,13 @@ export default function WebAuthnApp() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username,
-          credential: credentialData,
-          challenge: options.publicKey.challenge
+          credential: credentialData
         })
       });
 
       if (!verifyResponse.ok) {
-        throw new Error('Failed to verify registration');
+        const errorText = await verifyResponse.text();
+        throw new Error(`Failed to verify registration: ${errorText}`);
       }
 
       const result = await verifyResponse.json();
@@ -146,19 +167,30 @@ export default function WebAuthnApp() {
       });
 
       if (!optionsResponse.ok) {
-        throw new Error('Failed to get authentication options');
+        const errorText = await optionsResponse.text();
+        throw new Error(`Failed to get authentication options: ${errorText}`);
       }
 
       const options = await optionsResponse.json();
 
-      // Step 2: Convert challenge and allowed credentials
+      // Debug logging
+      console.log('Received auth options:', options);
+
+      if (!options.challenge) {
+        throw new Error('No challenge received from server');
+      }
+
+      // Step 2: Convert options to the format expected by WebAuthn API
       const publicKeyCredentialRequestOptions = {
-        ...options.publicKey,
-        challenge: base64URLStringToBuffer(options.publicKey.challenge),
-        allowCredentials: options.publicKey.allowCredentials?.map(cred => ({
-          ...cred,
-          id: base64URLStringToBuffer(cred.id)
-        })) || []
+        challenge: base64URLStringToBuffer(options.challenge),
+        timeout: options.timeout,
+        rpId: options.rpId,
+        allowCredentials: options.allowCredentials?.map(cred => ({
+          id: base64URLStringToBuffer(cred.id),
+          type: cred.type,
+          transports: cred.transports
+        })) || [],
+        userVerification: options.userVerification
       };
 
       setStatus('Please use your authenticator...');
@@ -167,6 +199,10 @@ export default function WebAuthnApp() {
       const assertion = await navigator.credentials.get({
         publicKey: publicKeyCredentialRequestOptions
       });
+
+      if (!assertion) {
+        throw new Error('No assertion returned from authenticator');
+      }
 
       setStatus('Verifying login...');
 
@@ -188,13 +224,13 @@ export default function WebAuthnApp() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username,
-          assertion: assertionData,
-          challenge: options.publicKey.challenge
+          credential: assertionData
         })
       });
 
       if (!verifyResponse.ok) {
-        throw new Error('Authentication failed');
+        const errorText = await verifyResponse.text();
+        throw new Error(`Authentication failed: ${errorText}`);
       }
 
       const result = await verifyResponse.json();
@@ -205,7 +241,11 @@ export default function WebAuthnApp() {
         setStatus('Login successful!');
         setUsername('');
       } else {
-        setStatus('User not found locally');
+        // Create user entry if they exist on server but not locally
+        const newUser = { username, registered: true };
+        setUser(newUser);
+        setStatus('Login successful!');
+        setUsername('');
       }
 
     } catch (error) {
