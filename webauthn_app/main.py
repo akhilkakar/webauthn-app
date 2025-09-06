@@ -194,6 +194,15 @@ async def register_begin(request: RegisterBeginRequest):
         print(f"Sending error response: {error_response}")
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
+'''
+Completes the WebAuthn registration process.
+It:
+1. Receives credential data from frontend (attestation).
+2. Retrieves and validates stored challenge.
+3. Verifies attestation response using webauthn library.
+4. Stores credential information (credential ID, public key, etc.) under the user.
+5. Returns success/failure to frontend.
+'''
 @app.post("/register/complete")
 async def register_complete(request: RegisterCompleteRequest):
     username = request.username.strip()
@@ -285,6 +294,15 @@ async def register_complete(request: RegisterCompleteRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Registration completion failed: {str(e)}")
 
+'''
+Starts the WebAuthn authentication (login) process.
+It:
+1.Validates username.
+2. Finds user’s registered credentials.
+3. Generates authentication options (PublicKeyCredentialRequestOptions).
+4. Stores challenge for later verification.
+5. Returns options to frontend for navigator.credentials.get().
+'''
 @app.post("/authenticate/begin")
 async def authenticate_begin(request: AuthenticateBeginRequest):
     username = request.username.strip()
@@ -355,6 +373,15 @@ async def authenticate_begin(request: AuthenticateBeginRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Authentication failed: {str(e)}")
 
+'''
+Completes the WebAuthn authentication process.
+It:
+1. Receives assertion data from frontend (authenticator’s signed response).
+2. Retrieves and validates stored challenge.
+3. Verifies assertion using webauthn library and stored credential public key.
+4. Confirms user identity if verification succeeds.
+5. Returns success/failure (and possibly a session or token).
+'''
 @app.post("/authenticate/complete")
 async def authenticate_complete(request: AuthenticateCompleteRequest):
     username = request.username.strip()
